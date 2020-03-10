@@ -1,6 +1,5 @@
-
 <#
-
+ 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
 See LICENSE in the project root for license information.
@@ -89,13 +88,13 @@ Write-Host "Checking for AzureAD module..."
 [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
 
 $clientId = "d1ddf0e4-d672-4dae-b554-9d5bdfd93547"
-
+ 
 $redirectUri = "urn:ietf:wg:oauth:2.0:oob"
-
+ 
 $resourceAppIdURI = "https://graph.microsoft.com"
-
+ 
 $authority = "https://login.microsoftonline.com/$Tenant"
-
+ 
     try {
 
     $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
@@ -147,34 +146,33 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 }
 
+
 ####################################################
 
-Function Get-IntuneBrand(){
+Function Get-ManagedAppAppConfigPolicy(){
 
 <#
 .SYNOPSIS
-This function is used to get the Company Intune Branding resources from the Graph API REST interface
+This function is used to get app configuration policies for managed apps from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets the Intune Branding Resource
+The function connects to the Graph API Interface and gets any app configuration policy for managed apps
 .EXAMPLE
-Get-IntuneBrand
-Returns the Company Intune Branding configured in Intune
+Get-ManagedAppAppConfigPolicy
+Returns any app configuration policy for managed apps configured in Intune
 .NOTES
-NAME: Get-IntuneBrand
+NAME: Get-ManagedAppAppConfigPolicy
 #>
 
-[cmdletbinding()]
-
 $graphApiVersion = "Beta"
-$Resource = "deviceManagement/intuneBrandingProfiles"
-
-    try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($resource)"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).value
-
+$Resource = "deviceAppManagement/targetedManagedAppConfigurations?`$expand=apps"
+    
+   try{
+        
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value 
+        
     }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -194,108 +192,184 @@ $Resource = "deviceManagement/intuneBrandingProfiles"
 
 ####################################################
 
-Function Set-IntuneBrand(){
+Function Get-ManagedDeviceAppConfigPolicy(){
 
 <#
 .SYNOPSIS
-This function is used to set the Company Intune Brand resource using the Graph API REST interface
+This function is used to get app configuration policies for managed devices from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and sets the Company Intune Brand Resource
+The function connects to the Graph API Interface and gets any app configuration policy for managed devices
 .EXAMPLE
-Set-IntuneBrand -JSON $JSON
-Sets the Company Intune Brand using Graph API
+Get-ManagedDeviceAppConfigPolicy
+Returns any app configuration policy for managed devices configured in Intune
 .NOTES
-NAME: Set-IntuneBrand
+NAME: Get-ManagedDeviceAppConfigPolicy
 #>
 
-[cmdletbinding()]
+$graphApiVersion = "Beta"
+$Resource = "deviceAppManagement/mobileAppConfigurations"
 
-param
-(
-    $id,
-    $JSON
+   try{
+        
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value 
+        
+    }
+    
+    catch {
+
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
+    break
+
+    }
+
+}
+
+####################################################
+
+Function Get-AppBundleID(){
+
+<#
+.SYNOPSIS
+This function is used to get an app bundle ID from the Graph API REST interface
+.DESCRIPTION
+The function connects to the Graph API Interface and gets the app bundle ID for the specified app GUID
+.EXAMPLE
+Get-AppBundleID -guid 
+Returns the bundle ID for the specified app GUID in Intune
+.NOTES
+NAME: Get-AppBundleID
+#>
+
+param (
+
+$GUID
+
 )
 
 $graphApiVersion = "Beta"
-$Resource = "deviceManagement/intuneBrandingProfiles('$id')"
+$Resource = "deviceAppManagement/mobileApps?`$filter=id eq '$GUID'"
+
+   try{
+        
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).value
+        
+    }
+    
+    catch {
+
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
+    break
+
+    }
+
+}
+
+####################################################
+
+Function Export-JSONData(){
+
+<#
+.SYNOPSIS
+This function is used to export JSON data returned from Graph
+.DESCRIPTION
+This function is used to export JSON data returned from Graph
+.EXAMPLE
+Export-JSONData -JSON $JSON
+Export the JSON inputted on the function
+.NOTES
+NAME: Export-JSONData
+#>
+
+param (
+
+$JSON,
+$ExportPath,
+$bundleID
+
+)
+
 
     try {
 
-        if(!$JSON){
+        if($JSON -eq "" -or $JSON -eq $null){
 
-        write-host "No JSON was passed to the function, provide a JSON variable" -f Red
-        break
+        write-host "No JSON specified, please specify valid JSON..." -f Red
+
+        }
+
+        elseif(!$ExportPath){
+
+        write-host "No export path parameter set, please provide a path to export the file" -f Red
+
+        }
+
+        elseif(!(Test-Path $ExportPath)){
+
+        write-host "$ExportPath doesn't exist, can't export JSON Data" -f Red
 
         }
 
         else {
 
-        Test-JSON -JSON $JSON
+        $JSON1 = ConvertTo-Json $JSON -Depth 5
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-        Invoke-RestMethod -Uri $uri -Method Patch -ContentType "application/json" -Body $JSON -Headers $authToken
+        $JSON_Convert = $JSON1 | ConvertFrom-Json
 
+        $displayName = $JSON_Convert.displayName
+
+        # Updating display name to follow file naming conventions - https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247%28v=vs.85%29.aspx
+        $DisplayName = $DisplayName -replace '\<|\>|:|"|/|\\|\||\?|\*', "_"
+
+        $Properties = ($JSON_Convert | Get-Member | ? { $_.MemberType -eq "NoteProperty" }).Name
+
+            
+            $FileName_JSON = "$DisplayName" + "_" + $(get-date -f dd-MM-yyyy-H-mm-ss) + "1.json"
+
+            $Object = New-Object System.Object
+
+                foreach($Property in $Properties){
+
+                $Object | Add-Member -MemberType NoteProperty -Name $Property -Value $JSON_Convert.$Property
+
+                }
+
+                If($bundleID)
+                {
+
+                    $Object | Add-Member -MemberType NoteProperty -name "bundleID" -Value $bundleID
+
+                }
+
+            write-host "Export Path:" "$ExportPath"
+        
+            $object | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$ExportPath\$FileName_JSON"
+            write-host "JSON created in $ExportPath\$FileName_JSON..." -f cyan
+            
         }
 
     }
 
     catch {
 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Test-JSON(){
-
-<#
-.SYNOPSIS
-This function is used to test if the JSON passed to a REST Post request is valid
-.DESCRIPTION
-The function tests if the JSON passed to the REST Post is valid
-.EXAMPLE
-Test-JSON -JSON $JSON
-Test if the JSON is valid before calling the Graph REST interface
-.NOTES
-NAME: Test-AuthHeader
-#>
-
-param (
-
-$JSON
-
-)
-
-    try {
-
-    $TestJSON = ConvertFrom-Json $JSON -ErrorAction Stop
-    $validJson = $true
-
-    }
-
-    catch {
-
-    $validJson = $false
     $_.Exception
-
-    }
-
-    if (!$validJson){
-
-    Write-Host "Provided JSON isn't in valid JSON format" -f Red
-    break
 
     }
 
@@ -321,7 +395,7 @@ if($global:authToken){
         write-host "Authentication Token expired" $TokenExpires "minutes ago" -ForegroundColor Yellow
         write-host
 
-            # Defining User Principal Name if not present
+            # Defining Azure AD tenant name, this is the name of your Azure Active Directory (do not use the verified domain name)
 
             if($User -eq $null -or $User -eq ""){
 
@@ -353,32 +427,78 @@ $global:authToken = Get-AuthToken -User $User
 
 #endregion
 
+   
 ####################################################
 
-$JSON_Default = @"
+$ExportPath = Read-Host -Prompt "Please specify a path to export the policy data to e.g. C:\IntuneOutput"
 
-{
+    # If the directory path doesn't exist prompt user to create the directory
+    $ExportPath = $ExportPath.replace('"','')
 
-    "displayName": "",
-    "privacyUrl": "",
-    "contactITName":"",
-    "contactITPhoneNumber":"",
-    "contactITEmailAddress":"",
-    "contactITNotes":"",
-    "onlineSupportSiteUrl":"",
-    "onlineSupportSiteName":"",
-    "themeColor":{"r":0,"g":114,"b":198},
-    "showLogo":false,
-    "showDisplayNameNextToLogo":true
+    if(!(Test-Path "$ExportPath")){
 
-}
+    Write-Host
+    Write-Host "Path '$ExportPath' doesn't exist, do you want to create this directory? Y or N?" -ForegroundColor Yellow
 
-"@
+    $Confirm = read-host
+
+        if($Confirm -eq "y" -or $Confirm -eq "Y"){
+
+        new-item -ItemType Directory -Path "$ExportPath" | Out-Null
+        Write-Host
+
+        }
+
+        else {
+
+        Write-Host "Creation of directory path was cancelled..." -ForegroundColor Red
+        Write-Host
+        break
+
+        }
+
+    }
+
+Write-Host
 
 ####################################################
 
-$IntuneBrand = Get-IntuneBrand
 
-$id = $IntuneBrand.id
+Write-Host "----------------------------------------------------"
+Write-Host
 
-Set-IntuneBrand -id $id -JSON $JSON_Default
+ $managedAppAppConfigPolicies = Get-ManagedAppAppConfigPolicy
+
+    foreach($policy in $managedAppAppConfigPolicies){
+
+    write-host "(Managed App) App Configuration Policy:"$policy.displayName -f Yellow
+    Export-JSONData -JSON $policy -ExportPath "$ExportPath"
+    Write-Host
+
+    }
+
+$managedDeviceAppConfigPolicies = Get-ManagedDeviceAppConfigPolicy
+
+    foreach($policy in $managedDeviceAppConfigPolicies){
+
+    write-host "(Managed Device) App Configuration  Policy:"$policy.displayName -f Yellow
+    
+        #If this is an Managed Device App Config for iOS, lookup the bundleID to support importing to a different tenant
+        If($policy.'@odata.type' -eq "#microsoft.graph.iosMobileAppConfiguration"){
+
+            $bundleID = Get-AppBundleID -GUID $policy.targetedMobileApps
+            Export-JSONData -JSON $policy -ExportPath "$ExportPath" -bundleID $bundleID.bundleID
+            Write-Host
+
+        }
+    
+
+        Else{
+
+            Export-JSONData -JSON $policy -ExportPath "$ExportPath"
+            Write-Host
+
+        }
+
+    }
+

@@ -1,4 +1,3 @@
-
 <#
 
 .COPYRIGHT
@@ -149,92 +148,77 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-IntuneBrand(){
+Function Get-AADGroup(){
 
 <#
 .SYNOPSIS
-This function is used to get the Company Intune Branding resources from the Graph API REST interface
+This function is used to get AAD Groups from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets the Intune Branding Resource
+The function connects to the Graph API Interface and gets any Groups registered with AAD
 .EXAMPLE
-Get-IntuneBrand
-Returns the Company Intune Branding configured in Intune
+Get-AADGroup
+Returns an AAD group
 .NOTES
-NAME: Get-IntuneBrand
-#>
-
-[cmdletbinding()]
-
-$graphApiVersion = "Beta"
-$Resource = "deviceManagement/intuneBrandingProfiles"
-
-    try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($resource)"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).value
-
-    }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Set-IntuneBrand(){
-
-<#
-.SYNOPSIS
-This function is used to set the Company Intune Brand resource using the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and sets the Company Intune Brand Resource
-.EXAMPLE
-Set-IntuneBrand -JSON $JSON
-Sets the Company Intune Brand using Graph API
-.NOTES
-NAME: Set-IntuneBrand
+NAME: Get-AADGroup
 #>
 
 [cmdletbinding()]
 
 param
 (
+    $GroupName,
     $id,
-    $JSON
+    [switch]$Members
 )
 
-$graphApiVersion = "Beta"
-$Resource = "deviceManagement/intuneBrandingProfiles('$id')"
-
+# Defining Variables
+$graphApiVersion = "v1.0"
+$Group_resource = "groups"
+    
     try {
 
-        if(!$JSON){
+        if($id){
 
-        write-host "No JSON was passed to the function, provide a JSON variable" -f Red
-        break
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
+        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
 
+        }
+        
+        elseif($GroupName -eq "" -or $GroupName -eq $null){
+        
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
+        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+        
         }
 
         else {
+            
+            if(!$Members){
 
-        Test-JSON -JSON $JSON
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            
+            }
+            
+            elseif($Members){
+            
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
+            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            
+                if($Group){
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-        Invoke-RestMethod -Uri $uri -Method Patch -ContentType "application/json" -Body $JSON -Headers $authToken
+                $GID = $Group.id
 
+                $Group.displayName
+                write-host
+
+                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
+                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+                }
+
+            }
+        
         }
 
     }
@@ -258,48 +242,49 @@ $Resource = "deviceManagement/intuneBrandingProfiles('$id')"
 
 ####################################################
 
-Function Test-JSON(){
+Function Get-iOSProvisioningProfile{
 
 <#
 .SYNOPSIS
-This function is used to test if the JSON passed to a REST Post request is valid
+This function is used to get iOS Provisioning Profile uploaded to Intune.
 .DESCRIPTION
-The function tests if the JSON passed to the REST Post is valid
+The function connects to the Graph API Interface and gets an iOS App Provisioning Profile.
 .EXAMPLE
-Test-JSON -JSON $JSON
-Test if the JSON is valid before calling the Graph REST interface
+Get-iOSProvisioningProfile
+Gets all iOS Provisioning Profiles
 .NOTES
-NAME: Test-AuthHeader
+NAME: Get-iOSProvisioningProfile
 #>
 
-param (
+[cmdletbinding()]
 
-$JSON
-
-)
-
+$graphApiVersion = "Beta"
+$Resource = "deviceAppManagement/iosLobAppProvisioningConfigurations?`$expand=assignments"
+    
     try {
+                
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
 
-    $TestJSON = ConvertFrom-Json $JSON -ErrorAction Stop
-    $validJson = $true
-
-    }
-
+            
+        }
+    
     catch {
 
-    $validJson = $false
-    $_.Exception
-
-    }
-
-    if (!$validJson){
-
-    Write-Host "Provided JSON isn't in valid JSON format" -f Red
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
     break
 
     }
 
-}
+} 
 
 ####################################################
 
@@ -355,30 +340,107 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$JSON_Default = @"
+write-host
+write-host "-------------------------------------------------------------------"
+Write-Host
+write-host "Analysing iOS App Provisioning Profiles..." -ForegroundColor Yellow
+Write-Host
+write-host "-------------------------------------------------------------------"
+write-host
+$Profiles = (Get-iOSProvisioningProfile)
+$Days = 30
+$CSV = @()
+$CSV += "iOSAppProvisioningProfileName,GroupAssignedName,ExpiryDate"
+$GroupsOutput = @()
 
-{
+    foreach ($Profile in $Profiles) {
+    
+        $Payload = $Profile.payload
+        $payloadFileName = $Profile.payloadFileName
+        $PayloadRaw = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Payload))
+        $Exp = ($PayloadRaw | C:\windows\System32\findstr.exe /i "date").trim()[3]
+        [datetime]$ProfileExpirationDate = $Exp.TrimStart('<date>').trimend('</date>')
+        $displayName = $Profile.displayName
+        $GroupID = ($Profile.assignments.target.groupId)
+        $CurrentTime = [System.DateTimeOffset]::Now
+        $TimeDifference = ($CurrentTime - $ProfileExpirationDate)
+        $TotalDays = ($TimeDifference.Days)
 
-    "displayName": "",
-    "privacyUrl": "",
-    "contactITName":"",
-    "contactITPhoneNumber":"",
-    "contactITEmailAddress":"",
-    "contactITNotes":"",
-    "onlineSupportSiteUrl":"",
-    "onlineSupportSiteName":"",
-    "themeColor":{"r":0,"g":114,"b":198},
-    "showLogo":false,
-    "showDisplayNameNextToLogo":true
+        write-host "iOS App Provisioning Profile Name: $($displayName)"
+            
+            
+                if ($GroupID) {
+               
+                    foreach ($id in $GroupID) {
+                
+                            $GroupName = (Get-AADGroup -id $id).DisplayName
+                            write-host "Group assigned: $($GroupName)"
+                            $CSV += "$($displayName),$($GroupName),$($ProfileExpirationDate)"
 
-}
+                        }
 
-"@
+                }
 
-####################################################
+                else {
+                
+                write-host "Group assigned: " -NoNewline 
+                Write-Host "Unassigned"
+                $CSV += "$($displayName),,$($ProfileExpirationDate)"
+                
+                }
+            
+            if ($TotalDays -gt "0") {
+           
+                Write-Host "iOS App Provisioning Profile Expiration Date: " -NoNewline
+                write-host "$($ProfileExpirationDate)" -ForegroundColor Red
 
-$IntuneBrand = Get-IntuneBrand
+            }
 
-$id = $IntuneBrand.id
+            elseif ($TotalDays -gt "-30") {
+            
+                    Write-Host "iOS App Provisioning Profile Expiration Date: " -NoNewline
+                    write-host "$($ProfileExpirationDate)" -ForegroundColor Yellow 
 
-Set-IntuneBrand -id $id -JSON $JSON_Default
+            }
+
+            else {
+            
+                    Write-Host "iOS App Provisioning Profile: $($ProfileExpirationDate)"
+
+            }
+
+        
+        Write-Host
+        write-host "-------------------------------------------------------------------"
+        write-host
+        
+    
+    }
+
+    if (!($Profiles.count -eq 0)) {
+
+    Write-Host "Export results? [Y]es, [N]o"
+    $conf = Read-Host
+ 
+        if ($conf -eq "Y"){
+
+        $parent = [System.IO.Path]::GetTempPath()
+        [string] $name = [System.Guid]::NewGuid()
+        New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
+        $TempDirPath = "$parent$name" 
+        $TempExportFilePath = "$($TempDirPath)\iOSAppProvisioningProfileExport.txt"
+        $CSV | Add-Content $TempExportFilePath -Force
+        Write-Host
+        Write-Host "$($TempExportFilePath)"
+        Write-Host
+
+        }
+
+    }
+
+    else {
+    
+        write-host "No iOS App Provisioning Profiles found."
+        write-host
+
+    }
