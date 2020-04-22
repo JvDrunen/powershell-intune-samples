@@ -1,11 +1,19 @@
-
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
 See LICENSE in the project root for license information.
 
 #>
+
+####################################################
+
+param
+(
+[parameter(Mandatory=$false)]
+$DeviceName
+
+)
 
 ####################################################
 
@@ -149,87 +157,156 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-ManagedDevices(){
+function Get-Win10IntuneManagedDevices {
 
 <#
 .SYNOPSIS
-This function is used to get Intune Managed Devices from the Graph API REST interface
+This gets information on Intune managed devices
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any Intune Managed Device
+This gets information on Intune managed devices
 .EXAMPLE
-Get-ManagedDevices
-Returns all managed devices but excludes EAS devices registered within the Intune Service
-.EXAMPLE
-Get-ManagedDevices -IncludeEAS
-Returns all managed devices including EAS devices registered within the Intune Service
+Get-Win10IntuneManagedDevices
 .NOTES
-NAME: Get-ManagedDevices
+NAME: Get-Win10IntuneManagedDevices
 #>
 
 [cmdletbinding()]
 
 param
 (
-    [switch]$IncludeEAS,
-    [switch]$ExcludeMDM
+[parameter(Mandatory=$false)]
+[ValidateNotNullOrEmpty()]
+[string]$deviceName
 )
+    
+    $graphApiVersion = "beta"
 
-# Defining Variables
-$graphApiVersion = "beta"
-$Resource = "deviceManagement/managedDevices"
+    try {
 
-try {
+        if($deviceName){
 
-    $Count_Params = 0
+            $Resource = "deviceManagement/managedDevices?`$filter=deviceName eq '$deviceName'"
+	        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)" 
 
-    if($IncludeEAS.IsPresent){ $Count_Params++ }
-    if($ExcludeMDM.IsPresent){ $Count_Params++ }
-
-        if($Count_Params -gt 1){
-
-        write-warning "Multiple parameters set, specify a single parameter -IncludeEAS, -ExcludeMDM or no parameter against the function"
-        Write-Host
-        break
-
-        }
-
-        elseif($IncludeEAS){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
-
-        }
-
-        elseif($ExcludeMDM){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=managementAgent eq 'eas'"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).value
 
         }
 
         else {
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=managementAgent eq 'mdm' and managementAgent eq 'easmdm' and managementAgent eq 'googleCloudDevicePolicyController'"
-        Write-Warning "EAS Devices are excluded by default, please use -IncludeEAS if you want to include those devices"
-        Write-Host
+            $Resource = "deviceManagement/managedDevices?`$filter=(((deviceType%20eq%20%27desktop%27)%20or%20(deviceType%20eq%20%27windowsRT%27)%20or%20(deviceType%20eq%20%27winEmbedded%27)%20or%20(deviceType%20eq%20%27surfaceHub%27)))"
+	        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).value
 
         }
 
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+	} catch {
+		$ex = $_.Exception
+		$errorResponse = $ex.Response.GetResponseStream()
+		$reader = New-Object System.IO.StreamReader($errorResponse)
+		$reader.BaseStream.Position = 0
+		$reader.DiscardBufferedData()
+		$responseBody = $reader.ReadToEnd();
+		Write-Host "Response content:`n$responseBody" -f Red
+		Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+		throw "Get-IntuneManagedDevices error"
+	}
 
-    }
+}
+
+####################################################
+
+function Get-IntuneDevicePrimaryUser {
+
+<#
+.SYNOPSIS
+This lists the Intune device primary user
+.DESCRIPTION
+This lists the Intune device primary user
+.EXAMPLE
+Get-IntuneDevicePrimaryUser
+.NOTES
+NAME: Get-IntuneDevicePrimaryUser
+#>
+
+[cmdletbinding()]
+
+param
+(
+    [Parameter(Mandatory=$true)]
+    [string] $deviceId
+)
+    $graphApiVersion = "beta"
+    $Resource = "deviceManagement/managedDevices"
+	$uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)" + "/" + $deviceId + "/users"
+
+    try {
+        
+        $primaryUser = Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get
+
+        return $primaryUser.value."id"
+        
+	} catch {
+		$ex = $_.Exception
+		$errorResponse = $ex.Response.GetResponseStream()
+		$reader = New-Object System.IO.StreamReader($errorResponse)
+		$reader.BaseStream.Position = 0
+		$reader.DiscardBufferedData()
+		$responseBody = $reader.ReadToEnd();
+		Write-Host "Response content:`n$responseBody" -f Red
+		Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+		throw "Get-IntuneDevicePrimaryUser error"
+	}
+}
+
+####################################################
+
+function Delete-IntuneDevicePrimaryUser {
+
+<#
+.SYNOPSIS
+This deletes the Intune device primary user
+.DESCRIPTION
+This deletes the Intune device primary user
+.EXAMPLE
+Delete-IntuneDevicePrimaryUser
+.NOTES
+NAME: Delete-IntuneDevicePrimaryUser
+#>
+
+[cmdletbinding()]
+
+param
+(
+[parameter(Mandatory=$true)]
+[ValidateNotNullOrEmpty()]
+$IntuneDeviceId
+)
+    
+    $graphApiVersion = "beta"
+    $Resource = "deviceManagement/managedDevices('$IntuneDeviceId')/users/`$ref"
+
+    try {
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+
+        Invoke-RestMethod -Uri $uri -Headers $authToken -Method Delete
+
+	}
 
     catch {
 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
+		$ex = $_.Exception
+		$errorResponse = $ex.Response.GetResponseStream()
+		$reader = New-Object System.IO.StreamReader($errorResponse)
+		$reader.BaseStream.Position = 0
+		$reader.DiscardBufferedData()
+		$responseBody = $reader.ReadToEnd();
+		Write-Host "Response content:`n$responseBody" -f Red
+		Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+		throw "Delete-IntuneDevicePrimaryUser error"
+	
     }
 
 }
@@ -249,137 +326,71 @@ if($global:authToken){
     # If the authToken exists checking when it expires
     $TokenExpires = ($authToken.ExpiresOn.datetime - $DateTime).Minutes
 
-        if($TokenExpires -le 0){
+    if($TokenExpires -le 0){
 
         write-host "Authentication Token expired" $TokenExpires "minutes ago" -ForegroundColor Yellow
         write-host
 
-            # Defining User Principal Name if not present
+        # Defining User Principal Name if not present
 
-            if($User -eq $null -or $User -eq ""){
-
+        if($User -eq $null -or $User -eq ""){
             $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
             Write-Host
-
-            }
+        }
 
         $global:authToken = Get-AuthToken -User $User
-
-        }
+    }
 }
 
 # Authentication doesn't exist, calling Get-AuthToken function
 
 else {
 
-    if($User -eq $null -or $User -eq ""){
-
-    $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
-    Write-Host
-
+    if($User -eq $null -or $User -eq "") {
+        $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
+        Write-Host
     }
 
-# Getting the authorization token
-$global:authToken = Get-AuthToken -User $User
-
+    # Getting the authorization token
+    $global:authToken = Get-AuthToken -User $User
 }
 
 #endregion
 
 ####################################################
 
-$ExportPath = Read-Host -Prompt "Please specify a path to export Managed Devices hardware data to e.g. C:\IntuneOutput"
-
-    # If the directory path doesn't exist prompt user to create the directory
-
-    if(!(Test-Path "$ExportPath")){
+if(!$DeviceName){
 
     Write-Host
-    Write-Host "Path '$ExportPath' doesn't exist, do you want to create this directory? Y or N?" -ForegroundColor Yellow
+    write-host "Intune Device Name:" -f Yellow
+    $DeviceName = Read-Host
 
-    $Confirm = read-host
+}
 
-        if($Confirm -eq "y" -or $Confirm -eq "Y"){
+$Device = Get-Win10IntuneManagedDevices -deviceName "$DeviceName"
 
-        new-item -ItemType Directory -Path "$ExportPath" | Out-Null
-        Write-Host
+if($Device){
 
-        }
-
-        else {
-
-        Write-Host "Creation of directory path was cancelled..." -ForegroundColor Red
-        Write-Host
-        break
-
-        }
-
-    }
-
-Write-Host
-
-####################################################
-
-$Devices = Get-ManagedDevices
-
-if($Devices){
-
-    $Results = @()
-
-    foreach($Device in $Devices){
-
-    $DeviceID = $Device.id
-
-    Write-Host "Device found:" $Device.deviceName -ForegroundColor Yellow
     Write-Host
+    Write-Host "Device name:" $device."deviceName" -ForegroundColor Cyan
+    $IntuneDevicePrimaryUser = Get-IntuneDevicePrimaryUser -deviceId $Device.id
 
-    $uri = "https://graph.microsoft.com/beta/deviceManagement/manageddevices('$DeviceID')?`$select=hardwareinformation,iccid,udid,ethernetMacAddress"
+    Write-Host "Intune Device Primary User:" $IntuneDevicePrimaryUser
 
-    $DeviceInfo = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
+    $DeleteIntuneDevicePrimaryUser = Delete-IntuneDevicePrimaryUser -IntuneDeviceId $Device.id
 
-    $DeviceNoHardware = $Device | select * -ExcludeProperty hardwareInformation,deviceActionResults,userId,imei,manufacturer,model,isSupervised,isEncrypted,serialNumber,meid,subscriberCarrier,iccid,udid,ethernetMacAddress
-    $HardwareExcludes = $DeviceInfo.hardwareInformation | select * -ExcludeProperty sharedDeviceCachedUsers,phoneNumber
-    $OtherDeviceInfo = $DeviceInfo | select iccid,udid,ethernetMacAddress
+    if($DeleteIntuneDevicePrimaryUser -eq ""){
 
-        $Object = New-Object System.Object
-
-            foreach($Property in $DeviceNoHardware.psobject.Properties){
-
-                $Object | Add-Member -MemberType NoteProperty -Name $Property.Name -Value $Property.Value
-
-            }
-
-            foreach($Property in $HardwareExcludes.psobject.Properties){
-
-                $Object | Add-Member -MemberType NoteProperty -Name $Property.Name -Value $Property.Value
-
-            }
-
-            foreach($Property in $OtherDeviceInfo.psobject.Properties){
-
-                $Object | Add-Member -MemberType NoteProperty -Name $Property.Name -Value $Property.Value
-
-            }
-
-        $Results += $Object
-
-        $Object
+        Write-Host "User deleted as Primary User from the device '$DeviceName'..." -ForegroundColor Green
 
     }
-
-    $Date = get-date
-
-    $Output = "ManagedDeviceHardwareInfo_" + $Date.Day + "-" + $Date.Month + "-" + $Date.Year + "_" + $Date.Hour + "-" + $Date.Minute
-
-    # Exporting Data to CSV file in provided directory
-    $Results | Export-Csv "$ExportPath\$Output.csv" -NoTypeInformation
-    write-host "CSV created in $ExportPath\$Output.csv..." -f cyan
 
 }
 
 else {
 
-write-host "No Intune Managed Devices found..." -f green
-Write-Host
+    Write-Host "Intune Device '$DeviceName' can't be found..." -ForegroundColor Red
 
 }
+
+Write-Host
